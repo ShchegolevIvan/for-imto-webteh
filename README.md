@@ -8,29 +8,30 @@
 ## Запуск проекта
 
 1. Установить зависимости:
-   ```bash
+   ```
    pip install -r requirements.txt
+   ```
 Настроить подключение к базе в app/db.py:
-
-python
+```
 DATABASE_URL = "postgresql+psycopg2://postgres:password@localhost:5432/news_db"
+```
 Создать базу данных:
-
-bash
+```
 sudo -u postgres psql -c "CREATE DATABASE news_db;"
+```
 Применить миграции:
-
-bash
+```
 alembic upgrade head
+```
 Запустить сервер:
-
-bash
+```
 uvicorn app.main:app --reload
+```
 API будет доступно по адресу: http://127.0.0.1:8000
 Документация Swagger: http://127.0.0.1:8000/docs
-
-Роуты API
-Пользователи
+---
+## Роуты API
+## Пользователи
 POST /users
 Создать пользователя.
 Пример:
