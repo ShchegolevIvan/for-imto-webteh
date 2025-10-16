@@ -1,7 +1,7 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, DeclarativeBase
 
-DATABASE_URL = "postgresql+psycopg2://postgres:password@localhost:5432/news_db" # введите свой пароль для корректного подключения
+DATABASE_URL = "postgresql+psycopg2://ИМЯ_ПОЛЬЗОВАТЕЛЯ:ПАРОЛЬ@localhost:5432/news_db" # введите свой пароль для корректного подключения
 
 engine = create_engine(DATABASE_URL, future=True)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
