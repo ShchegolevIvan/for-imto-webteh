@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from app.db import get_db
 from app import crud, models
 from app.deps import get_current_user, require_verified_author, require_owner_news, require_owner_comment
-
+from app.db import get_redis
 router = APIRouter()
 
 @router.post("/users", status_code=status.HTTP_201_CREATED)
@@ -29,8 +29,9 @@ async def add_news(request: Request, db: Session = Depends(get_db), user: models
     return crud.create_news(db, data).__dict__
 
 @router.get("/news")
-def list_news(db: Session = Depends(get_db), _=Depends(get_current_user)):
-    return [n.__dict__ for n in crud.get_news(db)]
+def list_news(db: Session = Depends(get_db), redis_client = Depends(get_redis), _=Depends(get_current_user)):
+    news = crud.get_news(db, redis_client)
+    return [n.__dict__ for n in news]
 
 @router.put("/news/{news_id}")
 async def edit_news(news_id: int, request: Request, db: Session = Depends(get_db)):
