@@ -1,3 +1,4 @@
+from app.tasks import send_news_notification
 from fastapi import APIRouter, Depends, Request, HTTPException, status
 from sqlalchemy.orm import Session
 from app.db import get_db
@@ -26,7 +27,14 @@ async def add_news(request: Request, db: Session = Depends(get_db), user: models
 
     if not author.is_verified_author:
         raise HTTPException(status_code=403, detail="Пользователь не верифицирован как автор")
-    return crud.create_news(db, data).__dict__
+
+    news = crud.create_news(db, data)
+
+    #  запускаем Celery-таск в фоне (уведомления о новой новости)
+    send_news_notification.delay(news.id)
+
+    return news.__dict__
+
 
 @router.get("/news")
 def list_news(db: Session = Depends(get_db), redis_client = Depends(get_redis), _=Depends(get_current_user)):
