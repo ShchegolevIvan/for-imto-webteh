@@ -7,29 +7,21 @@ from celery.signals import worker_shutdown
 
 from app.db import SessionLocal, redis_client
 from app import models
+from app.metrics import NOTIFICATIONS_SENT_TOTAL
+
 
 # ---------- ЛОГИРОВАНИЕ В ФАЙЛ ----------
 
 logger = logging.getLogger("notifications")
 logger.setLevel(logging.INFO)
 
-file_handler = logging.FileHandler("notifications.log", encoding="utf-8")
-file_handler.setFormatter(logging.Formatter(
-    "%(asctime)s - %(levelname)s - %(message)s"
-))
-logger.addHandler(file_handler)
+if not logger.handlers:
+    file_handler = logging.FileHandler("notifications.log", encoding="utf-8")
+    file_handler.setFormatter(
+        logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
+    )
+    logger.addHandler(file_handler)
 
-
-# ---------- ВСПОМОГАТЕЛЬНАЯ ШТУКА ДЛЯ БД ----------
-
-def get_db():
-    db = SessionLocal()
-    try:
-        return db
-    finally:
-        # закрывать будем вручную в тасках
-        ...
-        
 
 # ---------- 1) УВЕДОМЛЕНИЯ О НОВОЙ НОВОСТИ ----------
 
@@ -68,8 +60,12 @@ def send_news_notification(self, news_id: int):
                 f"news_id={news.id} title={news.title!r}"
             )
 
+            # метрика (по ТЗ ЛР7)
+            NOTIFICATIONS_SENT_TOTAL.labels(kind="new_news").inc()
+
             # TTL неделя, чтобы кеш не жил вечно
             redis_client.setex(sent_key, 7 * 24 * 60 * 60, "sent")
+
     finally:
         db.close()
 
@@ -93,37 +89,42 @@ def send_weekly_digest(self):
         now = datetime.now(timezone.utc)
         week_ago = now - timedelta(days=7)
 
+        # берем новости за 7 дней
         news_list = (
             db.query(models.News)
             .filter(models.News.published_at >= week_ago)
+            .order_by(models.News.published_at.desc())
             .all()
         )
+
+        year, week, _ = now.isocalendar()
         users = db.query(models.User).all()
 
-        iso = now.isocalendar()  # (year, week, weekday)
-        digest_id = f"{iso.year}-W{iso.week}"
-
         for user in users:
-            digest_key = f"digest:{digest_id}:user:{user.id}"
+            digest_key = f"notif:digest:{year}-W{week}:user:{user.id}"
 
+            # идемпотентность: не отправлять один и тот же дайджест дважды
             if redis_client.get(digest_key):
-                # уже отправляли этому пользователю этот дайджест
                 continue
 
             logger.info(
-                f"[digest] send WEEKLY_DIGEST to user_id={user.id} "
-                f"email={user.email}, items={len(news_list)}"
+                f"[digest] send WEEKLY_DIGEST to user_id={user.id} email={user.email} "
+                f"items={len(news_list)} week={year}-W{week}"
             )
 
-            # можно залогировать каждую новость по отдельности
+            # дополнительно логируем сами новости (моково)
             for n in news_list:
                 logger.info(
                     f"[digest]  -> news_id={n.id} title={n.title!r} "
                     f"published_at={n.published_at}"
                 )
 
-            # помечаем факт отправки дайджеста
+            # метрика (по ТЗ ЛР7)
+            NOTIFICATIONS_SENT_TOTAL.labels(kind="weekly_digest").inc()
+
+            # помечаем факт отправки дайджеста (на 7 дней)
             redis_client.setex(digest_key, 7 * 24 * 60 * 60, "sent")
+
     finally:
         db.close()
 

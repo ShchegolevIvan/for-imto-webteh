@@ -1,16 +1,25 @@
-from fastapi import FastAPI
-from app.api import router as api_router
-from app.api_auth import router as auth_router
-from app.api_sso import router as sso_router
-from app.db import redis_client
+from fastapi import FastAPI, Request
+from prometheus_client import make_asgi_app
+from starlette.responses import JSONResponse
+import structlog
+
+from app.api import router
+from app.middleware import RequestLoggingMiddleware
+from app.logging_config import setup_logging
+
+setup_logging()
+log = structlog.get_logger()
+
 app = FastAPI(title="News API")
-app.include_router(auth_router)
-app.include_router(sso_router)
-app.include_router(api_router)
-@app.on_event("startup")
-def startup_check():
-    try:
-        redis_client.ping()
-        print("Redis connected")
-    except Exception as e:
-        print("Redis not available:", e)
+
+app.add_middleware(RequestLoggingMiddleware)
+
+# expose /metrics
+app.mount("/metrics", make_asgi_app())
+
+app.include_router(router)
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    log.exception("unhandled_exception", path=request.url.path)
+    return JSONResponse(status_code=500, content={"detail": "Internal server error"})
