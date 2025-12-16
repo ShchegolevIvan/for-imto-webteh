@@ -1,16 +1,27 @@
 from app.tasks import send_news_notification
 from fastapi import APIRouter, Depends, Request, HTTPException, status
 from sqlalchemy.orm import Session
-from app.db import get_db
+
+from app.db import get_db, get_redis
 from app import crud, models
-from app.deps import get_current_user, require_verified_author, require_owner_news, require_owner_comment
-from app.db import get_redis
+from app.deps import (
+    get_current_user,
+    require_verified_author,
+    require_owner_comment,
+)
+
 router = APIRouter()
 
+
 @router.post("/users", status_code=status.HTTP_201_CREATED)
-async def add_user(request: Request, db: Session = Depends(get_db), _=Depends(get_current_user)):
+async def add_user(
+    request: Request,
+    db: Session = Depends(get_db),
+    _=Depends(get_current_user),
+):
     data = await request.json()
     return crud.create_user(db, data).__dict__
+
 
 @router.get("/users")
 def list_users(db: Session = Depends(get_db), _=Depends(get_current_user)):
@@ -18,7 +29,11 @@ def list_users(db: Session = Depends(get_db), _=Depends(get_current_user)):
 
 
 @router.post("/news", status_code=status.HTTP_201_CREATED)
-async def add_news(request: Request, db: Session = Depends(get_db), user: models.User = Depends(require_verified_author)):
+async def add_news(
+    request: Request,
+    db: Session = Depends(get_db),
+    user: models.User = Depends(require_verified_author),
+):
     data = await request.json()
 
     author = db.query(models.User).filter(models.User.id == data.get("author_id")).first()
@@ -30,16 +45,17 @@ async def add_news(request: Request, db: Session = Depends(get_db), user: models
 
     news = crud.create_news(db, data)
 
-    #  запускаем Celery-таск в фоне (уведомления о новой новости)
+    # запускаем Celery-таск в фоне (уведомления о новой новости)
     send_news_notification.delay(news.id)
 
     return news.__dict__
 
 
 @router.get("/news")
-def list_news(db: Session = Depends(get_db), redis_client = Depends(get_redis), _=Depends(get_current_user)):
+def list_news(db: Session = Depends(get_db), redis_client=Depends(get_redis), _=Depends(get_current_user)):
     news = crud.get_news(db, redis_client)
     return [n.__dict__ for n in news]
+
 
 @router.put("/news/{news_id}")
 async def edit_news(news_id: int, request: Request, db: Session = Depends(get_db)):
@@ -49,6 +65,7 @@ async def edit_news(news_id: int, request: Request, db: Session = Depends(get_db
         raise HTTPException(status_code=404, detail="Новость не найдена")
     return news.__dict__
 
+
 @router.delete("/news/{news_id}")
 def remove_news(news_id: int, db: Session = Depends(get_db)):
     news = crud.delete_news(db, news_id)
@@ -56,15 +73,22 @@ def remove_news(news_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Новость не найдена")
     return {"detail": "Новость удалена"}
 
+
 @router.post("/comments", status_code=status.HTTP_201_CREATED)
-async def add_comment(request: Request, db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
+async def add_comment(
+    request: Request,
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_current_user),
+):
     data = await request.json()
     data["author_id"] = user.id
     return crud.create_comment(db, data).__dict__
 
+
 @router.get("/comments")
 def list_comments(db: Session = Depends(get_db), _=Depends(get_current_user)):
     return [c.__dict__ for c in crud.get_comments(db)]
+
 
 @router.put("/comments/{comment_id}")
 async def edit_comment(
@@ -76,6 +100,7 @@ async def edit_comment(
     data = await request.json()
     comment = crud.update_comment(db, comment_id, data)
     return comment.__dict__
+
 
 @router.delete("/comments/{comment_id}")
 def remove_comment(
