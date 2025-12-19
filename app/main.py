@@ -5,6 +5,10 @@ import structlog
 from app.api import router
 from app.middleware import RequestLoggingMetricsMiddleware
 from app.logging_config import setup_logging
+from app.api import router as api_router
+from app.api_auth import router as auth_router
+from app.api_sso import router as sso_router
+
 
 setup_logging()
 log = structlog.get_logger()
@@ -16,6 +20,9 @@ app.add_middleware(RequestLoggingMetricsMiddleware)
 app.mount("/metrics", make_asgi_app())
 
 app.include_router(router)
+app.include_router(api_router)
+app.include_router(auth_router)
+app.include_router(sso_router)
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
